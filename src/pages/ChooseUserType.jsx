@@ -10,6 +10,7 @@ const ChooseUserType = () => {
         navigate('/professor');
     };
 
+
     const handleStudent = () => {
         navigate('/student');
     };
