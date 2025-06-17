@@ -1,53 +1,93 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Box, Typography, TextField, Button, Card, CardContent } from "@mui/material";
-import { auth, database } from "../firebase"; // Ensure correct import
-import { createUserWithEmailAndPassword } from "firebase/auth"; 
-import { ref, set } from "firebase/database"; 
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Modal,
+  MenuItem,
+  Select,
+  InputLabel,
+  FormControl,
+} from "@mui/material";
+import { supabase } from "../supabaseClient";
 
 const SignUpPage = () => {
-  const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [formData, setFormData] = useState({
+    name: "",
+    dob: "",
+    email: "",
+    password: "",
+    role: "",
+  });
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+
   const navigate = useNavigate();
 
-  // Handle Firebase sign-up
   const handleSignUp = async (e) => {
     e.preventDefault();
     setError(null);
 
-    if (!name || !dob || !email || !password) {
+    const { name, dob, email, password, role } = formData;
+    if (!name || !dob || !email || !password || !role) {
       setError("All fields are required!");
       return;
     }
 
     setLoading(true);
-    try {
-      // Create user in Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
 
-      // Save additional user data (name and DOB) in Firebase Database
-      await set(ref(database, `users/${user.uid}`), {
-        name: name,
-        dob: dob,
-        email: email,
-      });
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: "http://localhost:3000/verify",
+      },
+    });
 
-      console.log("User signed up:", user);
-      navigate("/"); // ✅ Redirects to LandingPage (which is at "/")
-    } catch (err) {
-      setError(err.message);
-    }
     setLoading(false);
+
+    if (signUpError) {
+      setError(signUpError.message);
+    } else {
+      localStorage.setItem("signupData", JSON.stringify({ name, dob, email, role }));
+      setModalOpen(true);
+    }
   };
+
+  // Background insert after verification
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes("access_token")) {
+      (async () => {
+        const { data: sessionData, error } = await supabase.auth.getSession();
+        if (error || !sessionData.session) return;
+
+        const { data: userData } = await supabase.auth.getUser();
+        const saved = JSON.parse(localStorage.getItem("signupData"));
+
+        if (userData?.user && saved) {
+          await supabase.from("users").insert({
+            id: userData.user.id,
+            email: userData.user.email,
+            name: saved.name,
+            dob: saved.dob,
+            role: saved.role,
+          });
+
+          localStorage.removeItem("signupData");
+        }
+      })();
+    }
+  }, []);
 
   return (
     <Box sx={{ width: "100vw", height: "100vh", display: "flex", overflow: "hidden" }}>
-      {/* Left Section - Welcome Back */}
+      {/* Left Section */}
       <Box
         sx={{
           width: "50%",
@@ -98,7 +138,7 @@ const SignUpPage = () => {
         </Link>
       </Box>
 
-      {/* Right Section - Create Account Form */}
+      {/* Right Section */}
       <Box
         sx={{
           width: "50%",
@@ -118,23 +158,22 @@ const SignUpPage = () => {
               Sign up to enjoy the feature of EXAM
             </Typography>
 
-            {/* Form */}
             <form onSubmit={handleSignUp}>
+              {/* Name */}
               <Box mb={2}>
                 <Typography fontSize="0.875rem" fontWeight="600" color="#8E2839" mb={1}>
                   Full Name
                 </Typography>
                 <TextField
                   fullWidth
-                  variant="outlined"
                   placeholder="Enter Name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
-                  sx={{ borderRadius: "8px", "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 />
               </Box>
 
+              {/* DOB */}
               <Box mb={2}>
                 <Typography fontSize="0.875rem" fontWeight="600" color="#8E2839" mb={1}>
                   Date of Birth
@@ -142,36 +181,28 @@ const SignUpPage = () => {
                 <TextField
                   fullWidth
                   type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
+                  value={formData.dob}
+                  onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
                   InputLabelProps={{ shrink: true }}
                   required
-                  sx={{
-                    borderRadius: "8px",
-                    "& .MuiOutlinedInput-root": { borderRadius: "8px" },
-                    "& input::-webkit-calendar-picker-indicator": {
-                      filter: "invert(0.5)",
-                      cursor: "pointer",
-                    },
-                  }}
                 />
               </Box>
 
+              {/* Email */}
               <Box mb={2}>
                 <Typography fontSize="0.875rem" fontWeight="600" color="#8E2839" mb={1}>
                   Email
                 </Typography>
                 <TextField
                   fullWidth
-                  variant="outlined"
                   placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
-                  sx={{ borderRadius: "8px", "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 />
               </Box>
 
+              {/* Password */}
               <Box mb={2}>
                 <Typography fontSize="0.875rem" fontWeight="600" color="#8E2839" mb={1}>
                   Password
@@ -179,13 +210,30 @@ const SignUpPage = () => {
                 <TextField
                   fullWidth
                   type="password"
-                  variant="outlined"
                   placeholder="******"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
-                  sx={{ borderRadius: "8px", "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 />
+              </Box>
+
+              {/* Role */}
+              <Box mb={3}>
+                <Typography fontSize="0.875rem" fontWeight="600" color="#8E2839" mb={1}>
+                  Role
+                </Typography>
+                <FormControl fullWidth required>
+                  <InputLabel id="role-label">Select Role</InputLabel>
+                  <Select
+                    labelId="role-label"
+                    value={formData.role}
+                    label="Select Role"
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                  >
+                    <MenuItem value="student">Student</MenuItem>
+                    <MenuItem value="professor">Professor</MenuItem>
+                  </Select>
+                </FormControl>
               </Box>
 
               {error && (
@@ -204,10 +252,6 @@ const SignUpPage = () => {
                   padding: "12px",
                   borderRadius: "999px",
                   fontSize: "1.125rem",
-                  transition: "0.3s",
-                  "&:hover": {
-                    backgroundColor: loading ? "#aaa" : "#7A2231",
-                  },
                 }}
               >
                 {loading ? "Creating Account..." : "Create Account"}
@@ -216,6 +260,32 @@ const SignUpPage = () => {
           </CardContent>
         </Card>
       </Box>
+
+      {/* Modal - No spinner, just action */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+        <Box
+          sx={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            bgcolor: "background.paper",
+            boxShadow: 24,
+            borderRadius: 2,
+            p: 4,
+            textAlign: "center",
+            width: 300,
+          }}
+        >
+          <Typography variant="h6" mb={2}>
+            ✅ Check your email to verify your account.
+          </Typography>
+          <Typography mb={3}>You can now go to the login page.</Typography>
+          <Button variant="contained" fullWidth onClick={() => navigate("/signin")}>
+            Go to Sign In
+          </Button>
+        </Box>
+      </Modal>
     </Box>
   );
 };

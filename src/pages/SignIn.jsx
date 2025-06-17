@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Box, Typography, TextField, Button, Card, CardContent } from "@mui/material";
-import { auth } from "../firebase"; // Import Firebase authentication
-import { signInWithEmailAndPassword } from "firebase/auth"; // Firebase function for login
+import { supabase } from "../supabaseClient";
 
 const SignInPage = () => {
   const [email, setEmail] = useState("");
@@ -23,14 +22,36 @@ const SignInPage = () => {
     }
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      console.log("User signed in successfully!");
-      navigate("/"); // Redirect to LandingPage
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (loginError) throw loginError;
+
+      const userId = data.user.id;
+
+      const { data: profile, error: profileError } = await supabase
+        .from("users")
+        .select("name, dob, email")
+        .eq("id", userId)
+        .single();
+
+      if (profileError || !profile) {
+        throw new Error("User profile not found.");
+      }
+
+      console.log(`✅ Signed in as ${profile.name}`);
+      navigate("/home"); // ✅ redirect after login
+
     } catch (err) {
-      setError("Invalid email or password. Please try again.");
+      setError(err.message || "Invalid email or password.");
+      console.error("Sign-in error:", err);
     }
+
     setLoading(false);
   };
+
 
   return (
     <Box sx={{ width: "100vw", height: "100vh", display: "flex", overflow: "hidden" }}>
@@ -43,7 +64,6 @@ const SignInPage = () => {
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: "#FFF",
-          position: "relative",
         }}
       >
         <Card sx={{ width: "90%", maxWidth: 420, padding: 3, boxShadow: 3, borderRadius: 3 }}>
@@ -55,7 +75,6 @@ const SignInPage = () => {
               Please login to continue to your account.
             </Typography>
 
-            {/* Form */}
             <form onSubmit={handleSignIn}>
               <Box mb={2}>
                 <Typography fontSize="0.875rem" fontWeight="600" color="#8E2839" mb={1}>
@@ -117,7 +136,7 @@ const SignInPage = () => {
         </Card>
       </Box>
 
-      {/* Right Section - Curved Background */}
+      {/* Right Section */}
       <Box
         sx={{
           width: "50%",
